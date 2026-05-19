@@ -1667,13 +1667,17 @@ function renderSyncPanel(){
       html+=`</div>`;
     }
 
-    // 多设备指南
-    html+=`<div class="sync-config-card"><h4>🔗 在新设备上连接</h4>
-      <div class="sync-help" style="margin-top:0;">
-        在新设备（手机/电脑）的浏览器中打开此页面，进入"云同步"：<br>
-        1. 填入相同的 <b>GitHub Token</b><br>
-        2. 在"已有 Gist ID"中填入：<code style="background:#e8e8e8;padding:2px 6px;border-radius:4px;font-size:11px;user-select:all;">${c.gistId||''}</code><br>
-        3. 保存配置后点击"立即同步"即可
+    // 快捷配对（手机端扫码/链接）
+    html+=`<div class="sync-config-card"><h4>📲 手机快捷配对</h4>
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">无需手动输入Token，一键配对手机端：</div>
+      <div class="sync-actions">
+        <button onclick="generatePairLink()">🔗 复制配对链接</button>
+        <button class="btn-outline" onclick="showPairQRCode()">📷 显示二维码</button>
+      </div>
+      <div class="sync-help" style="margin-top:12px;">
+        <b>方法一：</b>点击"复制配对链接"，通过微信/QQ发送到手机，手机点开即自动配置。<br>
+        <b>方法二：</b>点击"显示二维码"，手机扫码打开即可自动完成配置。<br><br>
+        <b>手动配对：</b>在新设备的"云同步"面板填入相同Token + Gist ID：<code style="background:#e8e8e8;padding:2px 6px;border-radius:4px;font-size:11px;user-select:all;">${c.gistId||''}</code>
       </div>
     </div>`;
   }
@@ -1693,9 +1697,73 @@ function renderSyncPanel(){
 }
 
 // ============================================================
+// URL快捷配对（手机扫码直接配置同步）
+// ============================================================
+function _checkUrlPairConfig(){
+  const params=new URLSearchParams(window.location.search);
+  const token=params.get('sync_token');
+  const gistId=params.get('sync_gist');
+  if(token){
+    const c=_getSyncConfig();
+    c.token=token;
+    if(gistId) c.gistId=gistId;
+    c.deviceName=_getDeviceName();
+    c.autoSync=true;
+    c.syncOnLoad=true;
+    _setSyncConfig(c);
+    _addSyncLog('通过配对链接自动配置成功','ok');
+    // 清除URL参数（避免token暴露在地址栏）
+    if(window.history&&window.history.replaceState){
+      const cleanUrl=window.location.origin+window.location.pathname;
+      window.history.replaceState({},'',cleanUrl);
+    }
+    showToast('☁️ 同步配置成功！正在同步...');
+    return true;
+  }
+  return false;
+}
+
+// 生成配对链接（电脑端用）
+function generatePairLink(){
+  const c=_getSyncConfig();
+  if(!c.token){showToast('请先在本设备配置Token',true);return;}
+  const baseUrl=window.location.origin+window.location.pathname;
+  const link=baseUrl+'?sync_token='+encodeURIComponent(c.token)+(c.gistId?'&sync_gist='+encodeURIComponent(c.gistId):'');
+  // 复制到剪贴板
+  if(navigator.clipboard){
+    navigator.clipboard.writeText(link).then(()=>{showToast('配对链接已复制！发送给手机即可');});
+  }else{
+    const ta=document.createElement('textarea');ta.value=link;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);
+    showToast('配对链接已复制！发送给手机即可');
+  }
+  _addSyncLog('生成配对链接','ok');
+}
+window.generatePairLink=generatePairLink;
+
+// 生成配对二维码（显示在面板中）
+function showPairQRCode(){
+  const c=_getSyncConfig();
+  if(!c.token){showToast('请先配置Token',true);return;}
+  const baseUrl=window.location.origin+window.location.pathname;
+  const link=baseUrl+'?sync_token='+encodeURIComponent(c.token)+(c.gistId?'&sync_gist='+encodeURIComponent(c.gistId):'');
+  const qrUrl='https://api.qrserver.com/v1/create-qr-code/?size=200x200&data='+encodeURIComponent(link);
+  const modal=document.createElement('div');
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:999;';
+  modal.innerHTML=`<div style="background:white;border-radius:20px;padding:24px;text-align:center;max-width:320px;width:90%;">
+    <h3 style="margin-bottom:12px;font-size:16px;">📱 手机扫码配对</h3>
+    <img src="${qrUrl}" style="width:180px;height:180px;border-radius:8px;margin:8px 0;" alt="配对二维码">
+    <p style="font-size:12px;color:#666;margin:10px 0;">手机扫描此二维码，打开后自动完成同步配置</p>
+    <button onclick="this.parentElement.parentElement.remove()" style="margin-top:8px;padding:8px 24px;">关闭</button>
+  </div>`;
+  document.body.appendChild(modal);
+}
+window.showPairQRCode=showPairQRCode;
+
+// ============================================================
 // 启动
 // ============================================================
 loadFromLocal();
+const _paired=_checkUrlPairConfig(); // 检查URL配对参数
 refreshAll();
 
 // 同步检查按钮（带状态反馈）
@@ -1731,9 +1799,10 @@ function _updateNavSyncDot(state){
 (function(){
   const c=_getSyncConfig();
   if(c.token){
+    const delay=_paired?800:1500; // 配对链接进来时更快同步
     setTimeout(()=>{
       doCloudSync().then(()=>{_updateNavSyncDot('ok');}).catch(()=>{_updateNavSyncDot('err');});
-    },1500);
+    },delay);
   }
 })();
 </script>
