@@ -792,29 +792,41 @@ function parseCsvLine(line){
 }
 function showCsvPreview(rows,errors){
   const unknownAreas=[...new Set(rows.map(r=>r.area).filter(a=>!regionPrices[a]))];
-  let html=`<table class="data-table"><thead><tr><th>#</th><th>日期</th><th>司机</th><th>地区</th><th>件数</th></tr></thead><tbody>`;
+  let dupCount=0;
+  let html=`<table class="data-table"><thead><tr><th>#</th><th>日期</th><th>司机</th><th>地区</th><th>件数</th><th>状态</th></tr></thead><tbody>`;
   rows.forEach((r,i)=>{
+    const isDup=deliveries.some(d=>d.date===r.date&&d.driver===r.driver&&d.area===r.area&&d.qty===r.qty);
+    if(isDup) dupCount++;
     const warn=!regionPrices[r.area]?'<span style="color:#e67e22;font-size:11px;"> ⚠️新</span>':'';
-    html+=`<tr><td>${i+1}</td><td>${r.date}</td><td>${r.driver}</td><td>${r.area}${warn}</td><td>${r.qty}</td></tr>`;
+    const status=isDup?'<span style="color:#ef4444;font-size:11px;">重复</span>':'<span style="color:var(--success);font-size:11px;">新增</span>';
+    const rowStyle=isDup?'style="opacity:0.5;text-decoration:line-through;"':'';
+    html+=`<tr ${rowStyle}><td>${i+1}</td><td>${r.date}</td><td>${r.driver}</td><td>${r.area}${warn}</td><td>${r.qty}</td><td>${status}</td></tr>`;
   });
   html+='</tbody></table>';
   document.getElementById('csvPreviewContent').innerHTML=html;
-  let stats=`共解析 <b>${rows.length}</b> 条有效记录`;
-  if(errors.length) stats+=`，<span style="color:#ef4444;">${errors.length} 条错误已跳过</span>`;
+  let stats=`共解析 <b>${rows.length}</b> 条记录`;
+  if(dupCount) stats+=`，<span style="color:#ef4444;"><b>${dupCount}</b> 条重复将跳过</span>`;
+  stats+=`，<span style="color:var(--success);"><b>${rows.length-dupCount}</b> 条将导入</span>`;
+  if(errors.length) stats+=`<br><span style="color:#ef4444;">${errors.length} 条格式错误已跳过</span>`;
   if(unknownAreas.length) stats+=`<br>⚠️ 新地区将使用默认单价1.08元：<b>${unknownAreas.join('、')}</b>`;
   document.getElementById('csvImportStats').innerHTML=stats;
   document.getElementById('csvImportModal').style.display='flex';
 }
 window.confirmCsvImport=function(){
   if(!pendingCsvRows.length) return;
-  let count=0;
+  let count=0,skipped=0;
   pendingCsvRows.forEach(r=>{
+    // 去重：检查是否已存在相同 日期+司机+地区+件数 的记录
+    const isDuplicate=deliveries.some(d=>d.date===r.date&&d.driver===r.driver&&d.area===r.area&&d.qty===r.qty);
+    if(isDuplicate){skipped++;return;}
     if(!regionPrices[r.area]) regionPrices[r.area]=1.08;
     deliveries.push({id:generateId(),date:r.date,driver:r.driver,area:r.area,qty:r.qty});
     count++;
   });
   pendingCsvRows=[];saveAndRefresh();closeCsvImportModal();
-  showToast(`成功导入 ${count} 条配送记录`);
+  let msg=`成功导入 ${count} 条配送记录`;
+  if(skipped) msg+=`，跳过 ${skipped} 条重复`;
+  showToast(msg);
   fireHook('onImportComplete',count);
 };
 window.closeCsvImportModal=function(){document.getElementById('csvImportModal').style.display='none';pendingCsvRows=[];};
