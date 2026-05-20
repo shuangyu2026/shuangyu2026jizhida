@@ -831,6 +831,29 @@ window.confirmCsvImport=function(){
 };
 window.closeCsvImportModal=function(){document.getElementById('csvImportModal').style.display='none';pendingCsvRows=[];};
 
+// 清理重复数据
+window.cleanDuplicateDeliveries=function(){
+  const before=deliveries.length;
+  const seen=new Map();
+  const unique=[];
+  deliveries.forEach(d=>{
+    const key=d.date+'|'+d.driver+'|'+d.area+'|'+d.qty;
+    if(!seen.has(key)){
+      seen.set(key,true);
+      unique.push(d);
+    }
+  });
+  const removed=before-unique.length;
+  if(removed===0){showToast('没有发现重复数据');return;}
+  if(!confirm(`发现 ${removed} 条重复记录，确定删除？`)) return;
+  deliveries=unique;
+  saveAndRefresh();
+  showToast(`已清理 ${removed} 条重复数据`);
+  // 如果配置了云同步，自动上传
+  const c=_getSyncConfig();
+  if(c.token) setTimeout(()=>doCloudSync().catch(()=>{}),500);
+};
+
 // ============================================================
 // 支出管理
 // ============================================================
@@ -1087,11 +1110,12 @@ function renderRecordsPanel(){
     <div style="display:flex;gap:6px;align-items:flex-end;"><button class="btn-small" id="applyFilterBtn">筛选</button><button class="btn-small btn-outline" id="resetFilterBtn">重置</button></div>
   </div>`;
   const importExportBar=`<div class="import-export-bar">
-    <span>批量操作：</span>
-    <div class="ie-btns">
-      <button class="btn-small" onclick="triggerCsvImport()">📥 导入 CSV</button>
-      <button class="btn-small btn-outline" id="exportCsvBtn">📤 导出筛选 CSV</button>
-      <button class="btn-small btn-outline" onclick="exportDeliveriesCsv()">📤 导出全部 CSV</button>
+<span>批量操作：</span>
+<div class="ie-btns">
+<button class="btn-small" onclick="triggerCsvImport()">📥 导入 CSV</button>
+<button class="btn-small btn-outline" id="exportCsvBtn">📤 导出筛选 CSV</button>
+<button class="btn-small btn-outline" onclick="exportDeliveriesCsv()">📤 导出全部 CSV</button>
+<button class="btn-small btn-outline" onclick="cleanDuplicateDeliveries()" style="color:var(--danger);border-color:var(--danger);">🧹 清理重复</button>
     </div>
     <span style="color:#aaa;font-size:11px;">格式：日期,司机,地区,件数</span>
   </div>`;
