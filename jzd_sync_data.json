@@ -1,0 +1,14 @@
+{
+  "vehicles": [],
+  "deliveries": [],
+  "driverUnitPrice": 0.6,
+  "penalties": [],
+  "expenses": [],
+  "regionPrices": {},
+  "_meta": {
+    "ver": 2,
+    "devName": "Test PC",
+    "devId": "test_device",
+    "ts": 1779348239000
+  }
+}
