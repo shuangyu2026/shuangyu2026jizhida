@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-05-21T14:23:05.4892992+08:00",
+  "_meta": {
+    "devName": "PowerShell Test",
+    "ts": 1779344585000,
+    "devId": "test_ps"
+  },
+  "test": true
+}
