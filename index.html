@@ -348,6 +348,7 @@ button:hover{opacity:0.9;}
   <button class="tab-btn" data-tab="region" onclick="switchTab('region',this)"><span class="tab-icon">📍</span>地区报价</button>
   <button class="tab-btn" data-tab="records" onclick="switchTab('records',this)"><span class="tab-icon">📋</span>配送记录</button>
   <button class="tab-btn" data-tab="vehicle" onclick="switchTab('vehicle',this)"><span class="tab-icon">🚛</span>车辆管理</button>
+  <button class="tab-btn" data-tab="driverMgr" onclick="switchTab('driverMgr',this)"><span class="tab-icon">👤</span>司机管理</button>
   <button class="tab-btn" data-tab="penalty" onclick="switchTab('penalty',this)"><span class="tab-icon">⚠️</span>扣罚记录</button>
   <button class="tab-btn" data-tab="finance" onclick="switchTab('finance',this)"><span class="tab-icon">📒</span>财务记账</button>
   <button class="tab-btn" data-tab="sync" onclick="switchTab('sync',this)"><span class="tab-icon">☁️</span>云同步</button>
@@ -370,6 +371,7 @@ button:hover{opacity:0.9;}
     <button class="mobile-nav-btn" data-tab="region" onclick="switchTab('region',this)"><span class="mnb-icon">📍</span>报价</button>
     <button class="mobile-nav-btn" data-tab="records" onclick="switchTab('records',this)"><span class="mnb-icon">📋</span>记录</button>
     <button class="mobile-nav-btn" data-tab="vehicle" onclick="switchTab('vehicle',this)"><span class="mnb-icon">🚛</span>车辆</button>
+    <button class="mobile-nav-btn" data-tab="driverMgr" onclick="switchTab('driverMgr',this)"><span class="mnb-icon">👤</span>司机</button>
     <button class="mobile-nav-btn" data-tab="penalty" onclick="switchTab('penalty',this)"><span class="mnb-icon">⚠️</span>扣罚</button>
     <button class="mobile-nav-btn" data-tab="finance" onclick="switchTab('finance',this)"><span class="mnb-icon">📒</span>财务</button>
     <div class="nav-divider"></div>
@@ -406,6 +408,7 @@ button:hover{opacity:0.9;}
   <div id="regionPanel" class="tab-panel" style="display:none;"></div>
   <div id="recordsPanel" class="tab-panel" style="display:none;"></div>
   <div id="vehiclePanel" class="tab-panel" style="display:none;"></div>
+  <div id="driverMgrPanel" class="tab-panel" style="display:none;"></div>
   <div id="penaltyPanel" class="tab-panel" style="display:none;"></div>
   <div id="financePanel" class="tab-panel" style="display:none;"></div>
   <div id="syncPanel" class="tab-panel" style="display:none;"></div>
@@ -457,6 +460,20 @@ button:hover{opacity:0.9;}
     <input type="text" id="vehicleManager" placeholder="车辆负责人" list="managerList"><datalist id="managerList"></datalist>
     <textarea id="vehicleRemark" rows="2" placeholder="备注"></textarea>
     <div class="modal-buttons"><button class="btn-outline" onclick="closeVehicleModal()">取消</button><button onclick="saveVehicle()">保存</button></div>
+  </div>
+</div>
+
+<!-- 模态框：司机管理 -->
+<div id="driverModal" class="modal">
+  <div class="modal-content">
+    <h3 id="driverModalTitle">👤 添加司机</h3>
+    <input type="text" id="driverName" placeholder="司机姓名">
+    <label style="display:block;font-size:12px;color:#888;margin:4px 0 2px;">上岗时间</label>
+    <input type="date" id="driverJoinDate">
+    <label style="display:block;font-size:12px;color:#888;margin:4px 0 2px;">离职时间（未离职可留空）</label>
+    <input type="date" id="driverLeaveDate">
+    <textarea id="driverRemark" rows="2" placeholder="备注"></textarea>
+    <div class="modal-buttons"><button class="btn-outline" onclick="closeDriverModal()">取消</button><button onclick="saveDriver()">保存</button></div>
   </div>
 </div>
 
@@ -589,9 +606,11 @@ let deliveries=[];
 let vehicles=[];
 let penalties=[];
 let expenses=[];
+let driverProfiles=[];
 const TAX_RATE=0.06;
 let editingVehiclePlate=null;
 let editingPenaltyId=null;
+let editingDriverId=null;
 let currentEditDeliveryId=null;
 let currentEditExpenseId=null;
 let pendingCsvRows=[];
@@ -618,6 +637,7 @@ function loadFromLocal(){
           vehicles=data.vehicles||[];
           penalties=data.penalties||[];
           expenses=data.expenses||[];
+          driverProfiles=data.driverProfiles||[];
           ensureDeliveryId();
           vehicles=vehicles.map(v=>({...v,manager:v.manager||''}));
           refreshAll();
@@ -639,6 +659,7 @@ function _loadLocalStorage(){
       vehicles=data.vehicles||[];
       penalties=data.penalties||[];
       expenses=data.expenses||[];
+      driverProfiles=data.driverProfiles||[];
       ensureDeliveryId();
       vehicles=vehicles.map(v=>({...v,manager:v.manager||''}));
     }catch(e){console.error(e);}
@@ -651,7 +672,7 @@ function _loadLocalStorage(){
   ensureDeliveryId();
 }
 function saveToLocal(){
-  const data={deliveries,regionPrices,driverUnitPrice,vehicles,penalties,expenses};
+  const data={deliveries,regionPrices,driverUnitPrice,vehicles,penalties,expenses,driverProfiles};
   localStorage.setItem('deliveryApp',JSON.stringify(data));
   if(typeof window.JZD_API.saveData==='function'){
     try{const p=window.JZD_API.saveData(data);if(p&&p.catch) p.catch(e=>console.warn('JZD_API.saveData failed',e));}catch(e){console.warn(e);}
@@ -687,7 +708,7 @@ function getGlobalSummary(){
   deliveries.forEach(d=>{const p=calculateProfit(d);tq+=d.qty;tr+=p.revenue;tdc+=p.driverCost;tp+=p.profit;});
   return{totalQty:tq,totalRevenue:tr,totalDriverCost:tdc,totalProfit:tp};
 }
-function getAllDriverNames(){return[...new Set(deliveries.map(d=>d.driver))].sort();}
+function getAllDriverNames(){const s=new Set();deliveries.forEach(d=>{if(d.driver) s.add(d.driver);});driverProfiles.forEach(p=>{if(p.name) s.add(p.name);});return[...s].sort();}
 function getAllAreas(){return Object.keys(regionPrices).sort();}
 
 // ============================================================
@@ -1153,6 +1174,31 @@ function renderVehiclePanel(){
   </tbody></table></div></div>`;
 }
 
+function renderDriverMgrPanel(){
+  const container=document.getElementById('driverMgrPanel');
+  if(!container) return;
+  // 统计每位司机的配送件数，便于一目了然
+  function deliveryCount(name){return deliveries.filter(d=>d.driver===name).length;}
+  const head=`<div class="card"><div class="section-title">👤 司机管理 <button class="btn-small" onclick="openAddDriverModal()">➕ 添加司机</button></div>`;
+  if(!driverProfiles.length){
+    container.innerHTML=`${head}<p style="margin-top:12px;color:#aaa;">暂无司机档案，点击「添加司机」录入上岗/离职时间与备注。<br>已有配送记录的司机也可在此手动建档。</p></div>`;
+    return;
+  }
+  const rows=driverProfiles.slice().sort((a,b)=>{
+    // 在职在前，离职在后，再按姓名
+    const aOn=a.leaveDate?1:0,bOn=b.leaveDate?1:0;
+    if(aOn!==bOn) return aOn-bOn;
+    return (a.name||'').localeCompare(b.name||'','zh');
+  }).map(p=>{
+    const status=p.leaveDate?'<span style="color:#ef4444;">已离职</span>':'<span style="color:#16a34a;">在职</span>';
+    return `<tr><td>${p.name||'-'}</td><td>${status}</td><td>${p.joinDate||'-'}</td><td>${p.leaveDate||'-'}</td><td>${deliveryCount(p.name)}</td><td>${p.remark||'-'}</td><td><button class="btn-small btn-outline" onclick="editDriver('${p.id}')">编辑</button> <button class="btn-small btn-danger" onclick="deleteDriver('${p.id}')">删除</button></td></tr>`;
+  }).join('');
+  container.innerHTML=`${head}
+  <div class="table-wrapper"><table class="data-table"><thead><tr><th>姓名</th><th>状态</th><th>上岗时间</th><th>离职时间</th><th>配送单数</th><th>备注</th><th>操作</th></tr></thead><tbody>
+    ${rows}
+  </tbody></table></div></div>`;
+}
+
 function renderPenaltyPanel(){
   const container=document.getElementById('penaltyPanel');
   const allDrivers=getAllDriverNames();
@@ -1209,7 +1255,7 @@ window.showMonthExpenses=function(month){
 // 全局刷新
 // ============================================================
 function updateSummary(){const g=getGlobalSummary();document.getElementById('totalQty').innerText=g.totalQty;document.getElementById('totalRevenue').innerText=g.totalRevenue.toFixed(0);document.getElementById('totalDriverCost').innerText=g.totalDriverCost.toFixed(0);document.getElementById('totalProfit').innerText=g.totalProfit.toFixed(0);}
-function refreshAll(){renderDriverPanel();renderRegionPanel();renderRecordsPanel();renderVehiclePanel();renderPenaltyPanel();renderFinancePanel();renderSyncPanel();updateSummary();updateDriverSelectInVehicleModal();updateDriverListForPenalty();}
+function refreshAll(){renderDriverPanel();renderRegionPanel();renderRecordsPanel();renderVehiclePanel();renderDriverMgrPanel();renderPenaltyPanel();renderFinancePanel();renderSyncPanel();updateSummary();updateDriverSelectInVehicleModal();updateDriverListForPenalty();}
 function updateDriverSelectInVehicleModal(){const select=document.getElementById('vehicleCurrentDriver');if(select){const drivers=getAllDriverNames();select.innerHTML='<option value="">未分配司机</option>'+drivers.map(d=>`<option value="${d}">${d}</option>`).join('');if(editingVehiclePlate){const vehicle=vehicles.find(v=>v.plate===editingVehiclePlate);if(vehicle&&vehicle.currentDriver) select.value=vehicle.currentDriver;}}}
 function updateDriverListForPenalty(){const datalist=document.getElementById('driverListPenalty');if(datalist) datalist.innerHTML=getAllDriverNames().map(d=>`<option>${d}</option>`).join('');}
 
@@ -1225,6 +1271,11 @@ window.editVehicle=function(plate){const v=vehicles.find(v=>v.plate===plate);if(
 window.saveVehicle=function(){const plate=document.getElementById('vehiclePlate').value.trim();const model=document.getElementById('vehicleModel').value.trim();if(!plate||!model){showToast('车牌车型必填',true);return;}const monthlyRent=parseFloat(document.getElementById('vehicleMonthlyRent').value)||0;const deposit=parseFloat(document.getElementById('vehicleDeposit').value)||0;const purchaseDate=document.getElementById('vehiclePurchaseDate').value;const currentDriver=document.getElementById('vehicleCurrentDriver').value;const manager=document.getElementById('vehicleManager').value.trim();const remark=document.getElementById('vehicleRemark').value;if(editingVehiclePlate===null){if(vehicles.some(v=>v.plate===plate)){showToast('车牌已存在',true);return;}vehicles.push({plate,model,monthlyRent,deposit,purchaseDate,currentDriver,manager,remark});}else{const idx=vehicles.findIndex(v=>v.plate===editingVehiclePlate);if(idx!==-1) vehicles[idx]={plate,model,monthlyRent,deposit,purchaseDate,currentDriver,manager,remark};}saveAndRefresh();closeVehicleModal();};
 window.deleteVehicle=function(plate){if(confirm('删除车辆？')){vehicles=vehicles.filter(v=>v.plate!==plate);saveAndRefresh();}};
 function closeVehicleModal(){document.getElementById('vehicleModal').style.display='none';editingVehiclePlate=null;}
+window.openAddDriverModal=function(){editingDriverId=null;document.getElementById('driverModalTitle').textContent='👤 添加司机';['driverName','driverJoinDate','driverLeaveDate','driverRemark'].forEach(id=>document.getElementById(id).value='');document.getElementById('driverModal').style.display='flex';};
+window.editDriver=function(id){const p=driverProfiles.find(p=>p.id===id);if(!p) return;editingDriverId=id;document.getElementById('driverModalTitle').textContent='👤 编辑司机';document.getElementById('driverName').value=p.name||'';document.getElementById('driverJoinDate').value=p.joinDate||'';document.getElementById('driverLeaveDate').value=p.leaveDate||'';document.getElementById('driverRemark').value=p.remark||'';document.getElementById('driverModal').style.display='flex';};
+window.saveDriver=function(){const name=document.getElementById('driverName').value.trim();if(!name){showToast('司机姓名必填',true);return;}const joinDate=document.getElementById('driverJoinDate').value;const leaveDate=document.getElementById('driverLeaveDate').value;const remark=document.getElementById('driverRemark').value;if(leaveDate&&joinDate&&leaveDate<joinDate){showToast('离职时间不能早于上岗时间',true);return;}if(editingDriverId===null){if(driverProfiles.some(p=>p.name===name)){showToast('该司机已存在',true);return;}driverProfiles.push({id:'dr_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),name,joinDate,leaveDate,remark});}else{const idx=driverProfiles.findIndex(p=>p.id===editingDriverId);if(idx!==-1){if(driverProfiles.some(p=>p.name===name&&p.id!==editingDriverId)){showToast('该司机姓名已存在',true);return;}driverProfiles[idx]={...driverProfiles[idx],name,joinDate,leaveDate,remark};}}saveAndRefresh();closeDriverModal();};
+window.deleteDriver=function(id){if(confirm('删除该司机档案？（不会影响已有配送记录）')){driverProfiles=driverProfiles.filter(p=>p.id!==id);saveAndRefresh();}};
+function closeDriverModal(){document.getElementById('driverModal').style.display='none';editingDriverId=null;}
 window.openAddPenaltyModal=function(){editingPenaltyId=null;['penaltyDate','penaltyDriver','penaltyAmount','penaltyReason'].forEach(id=>document.getElementById(id).value='');updateDriverListForPenalty();document.getElementById('penaltyModal').style.display='flex';};
 window.editPenalty=function(id){const p=penalties.find(p=>p.id===id);if(!p) return;editingPenaltyId=id;document.getElementById('penaltyDate').value=p.date;document.getElementById('penaltyDriver').value=p.driver;document.getElementById('penaltyAmount').value=p.amount;document.getElementById('penaltyReason').value=p.reason||'';updateDriverListForPenalty();document.getElementById('penaltyModal').style.display='flex';};
 window.savePenalty=function(){const date=document.getElementById('penaltyDate').value;const driver=document.getElementById('penaltyDriver').value.trim();const amount=parseFloat(document.getElementById('penaltyAmount').value);const reason=document.getElementById('penaltyReason').value.trim();if(!date||!driver||isNaN(amount)||amount<=0){showToast('请完整填写',true);return;}if(editingPenaltyId===null){penalties.push({id:generateId(),date,driver,amount,reason});}else{const idx=penalties.findIndex(p=>p.id===editingPenaltyId);if(idx!==-1) penalties[idx]={...penalties[idx],date,driver,amount,reason};}saveAndRefresh();closePenaltyModal();};
@@ -1236,9 +1287,9 @@ function closePrintModal(){document.getElementById('printModal').style.display='
 window.printSalarySheet=function(){const selected=document.getElementById('printDriverSelect').value;const drivers=getDriverSummary();const toPrint=selected==='all'?drivers:drivers.filter(d=>d.name===selected);let html='<div><h2>司机工资单</h2>';toPrint.forEach(d=>{html+=`<h3>${d.name}</h3><p>总件数:${d.totalQty} 总运价:${d.totalRevenue.toFixed(2)} 成本:${d.totalDriverCost.toFixed(2)} 利润:${d.totalProfit.toFixed(2)}</p>`;});html+='</div>';const win=window.open('','_blank');win.document.write(`<html><head><title>工资单</title></head><body>
 <noscript><div style="display:flex;align-items:center;justify-content:center;min-height:100vh;width:100%;padding:40px;text-align:center;font-size:18px;color:#666;">本应用需要启用 JavaScript 才能运行，请开启后刷新页面。</div></noscript>${html}</body></html>`);win.document.close();win.print();closePrintModal();};
 window.exportTxtReport=function(){showToast('导出功能已触发');};
-window.exportBackup=function(){const backup={deliveries,regionPrices,driverUnitPrice,vehicles,penalties,expenses,exportTime:new Date()};const blob=new Blob([JSON.stringify(backup,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`配送备份_${new Date().toISOString().slice(0,19)}.json`;a.click();showToast('备份已导出');};
-window.importBackup=function(event){const file=event.target.files[0];if(!file) return;const reader=new FileReader();reader.onload=function(e){try{const data=JSON.parse(e.target.result);if(data.deliveries&&data.regionPrices&&typeof data.driverUnitPrice==='number'){deliveries=data.deliveries;regionPrices=data.regionPrices;driverUnitPrice=data.driverUnitPrice;vehicles=data.vehicles||[];penalties=data.penalties||[];expenses=data.expenses||[];ensureDeliveryId();saveToLocal();refreshAll();showToast('恢复成功');}else showToast('格式错误',true);}catch(err){showToast('解析失败',true);}document.getElementById('fileInput').value='';};reader.readAsText(file);};
-window.resetToExample=function(){if(confirm('重置所有数据？')){deliveries=JSON.parse(JSON.stringify(defaultDeliveriesRaw)).map(d=>({...d,id:generateId()}));regionPrices=JSON.parse(JSON.stringify(defaultRegionPrices));driverUnitPrice=0.60;vehicles=JSON.parse(JSON.stringify(defaultVehicles));penalties=JSON.parse(JSON.stringify(defaultPenalties));expenses=JSON.parse(JSON.stringify(defaultExpenses));saveToLocal();refreshAll();showToast('已重置');}};
+window.exportBackup=function(){const backup={deliveries,regionPrices,driverUnitPrice,vehicles,penalties,expenses,driverProfiles,exportTime:new Date()};const blob=new Blob([JSON.stringify(backup,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`配送备份_${new Date().toISOString().slice(0,19)}.json`;a.click();showToast('备份已导出');};
+window.importBackup=function(event){const file=event.target.files[0];if(!file) return;const reader=new FileReader();reader.onload=function(e){try{const data=JSON.parse(e.target.result);if(data.deliveries&&data.regionPrices&&typeof data.driverUnitPrice==='number'){deliveries=data.deliveries;regionPrices=data.regionPrices;driverUnitPrice=data.driverUnitPrice;vehicles=data.vehicles||[];penalties=data.penalties||[];expenses=data.expenses||[];driverProfiles=data.driverProfiles||[];ensureDeliveryId();saveToLocal();refreshAll();showToast('恢复成功');}else showToast('格式错误',true);}catch(err){showToast('解析失败',true);}document.getElementById('fileInput').value='';};reader.readAsText(file);};
+window.resetToExample=function(){if(confirm('重置所有数据？')){deliveries=JSON.parse(JSON.stringify(defaultDeliveriesRaw)).map(d=>({...d,id:generateId()}));regionPrices=JSON.parse(JSON.stringify(defaultRegionPrices));driverUnitPrice=0.60;vehicles=JSON.parse(JSON.stringify(defaultVehicles));penalties=JSON.parse(JSON.stringify(defaultPenalties));expenses=JSON.parse(JSON.stringify(defaultExpenses));driverProfiles=[];saveToLocal();refreshAll();showToast('已重置');}};
 
 // ============================================================
 // Tab 切换
@@ -1252,8 +1303,8 @@ window.switchTab=function(tab,btnEl){
     document.querySelectorAll('.mobile-nav-btn').forEach(b=>{if(b.dataset.tab===tab) b.classList.add('active');});
     document.querySelectorAll('.sidebar .tab-btn').forEach(b=>{if(b.getAttribute('onclick')&&b.getAttribute('onclick').includes(`'${tab}'`)) b.classList.add('active');});
   }
-  const panels=['driverPanel','regionPanel','recordsPanel','vehiclePanel','penaltyPanel','financePanel','syncPanel'];
-  const tabMap={driver:'driverPanel',region:'regionPanel',records:'recordsPanel',vehicle:'vehiclePanel',penalty:'penaltyPanel',finance:'financePanel',sync:'syncPanel'};
+  const panels=['driverPanel','regionPanel','recordsPanel','vehiclePanel','driverMgrPanel','penaltyPanel','financePanel','syncPanel'];
+  const tabMap={driver:'driverPanel',region:'regionPanel',records:'recordsPanel',vehicle:'vehiclePanel',driverMgr:'driverMgrPanel',penalty:'penaltyPanel',finance:'financePanel',sync:'syncPanel'};
   panels.forEach(id=>{document.getElementById(id).style.display='none';});
   const target=tabMap[tab];if(target) document.getElementById(target).style.display='block';
   fireHook('onTabSwitch',tab);
@@ -1429,7 +1480,7 @@ function _base64ToUtf8(b64){
 
 function _buildSyncPayload(){
   return {
-    deliveries,regionPrices,driverUnitPrice,vehicles,penalties,expenses,
+    deliveries,regionPrices,driverUnitPrice,vehicles,penalties,expenses,driverProfiles,
     _meta:{ts:Date.now(),devId:_getDeviceId(),devName:_getDeviceName(),ver:2}
   };
 }
@@ -1441,9 +1492,10 @@ function _applySyncData(data){
   if(data.vehicles) vehicles=data.vehicles;
   if(data.penalties) penalties=data.penalties;
   if(data.expenses) expenses=data.expenses;
+  if(data.driverProfiles) driverProfiles=data.driverProfiles;
   ensureDeliveryId();
   vehicles=vehicles.map(v=>({...v,manager:v.manager||''}));
-  localStorage.setItem('deliveryApp',JSON.stringify({deliveries,regionPrices,driverUnitPrice,vehicles,penalties,expenses}));
+  localStorage.setItem('deliveryApp',JSON.stringify({deliveries,regionPrices,driverUnitPrice,vehicles,penalties,expenses,driverProfiles}));
 }
 
 // 智能合并（按id去重）
@@ -1467,6 +1519,10 @@ function _mergeData(local,remote){
   const eMap=new Map();
   [...(local.expenses||[]),...(remote.expenses||[])].forEach(e=>{if(e.id) eMap.set(e.id,e);});
   m.expenses=Array.from(eMap.values());
+  // 司机档案合并（按id去重）
+  const drMap=new Map();
+  [...(local.driverProfiles||[]),...(remote.driverProfiles||[])].forEach(p=>{if(p.id) drMap.set(p.id,p);});
+  m.driverProfiles=Array.from(drMap.values());
   // 单价取最新
   const rTs=(remote._meta&&remote._meta.ts)||0;
   const lTs=(local._meta&&local._meta.ts)||0;
