@@ -1179,6 +1179,10 @@ function renderVehiclePanel(){
 function renderDriverMgrPanel(){
   const container=document.getElementById('driverMgrPanel');
   if(!container) return;
+  // 自动补全历史司机的上岗时间（取配送记录最早日期）
+  let patched=false;
+  driverProfiles.forEach(p=>{if(!p.joinDate){const d=getFirstDeliveryDate(p.name);if(d){p.joinDate=d;patched=true;}}});
+  if(patched) saveToLocal();
   // 统计每位司机的配送趟数与件数，便于一目了然
   function deliveryCount(name){return deliveries.filter(d=>d.driver===name).length;}
   function qtyTotal(name){return deliveries.filter(d=>d.driver===name).reduce((s,d)=>s+(Number(d.qty)||0),0);}
