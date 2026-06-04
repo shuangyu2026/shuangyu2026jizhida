@@ -1194,10 +1194,12 @@ function renderDriverMgrPanel(){
     return (a.name||'').localeCompare(b.name||'','zh');
   }).map(p=>{
     const status=p.leaveDate?'<span style="color:#ef4444;">已离职</span>':'<span style="color:#16a34a;">在职</span>';
-    return `<tr><td>${p.name||'-'}</td><td>${status}</td><td>${p.joinDate||'-'}</td><td>${p.leaveDate||'-'}</td><td>${deliveryCount(p.name)}</td><td>${qtyTotal(p.name)}</td><td>${p.remark||'-'}</td><td><button class="btn-small btn-outline" onclick="editDriver('${p.id}')">编辑</button> <button class="btn-small btn-danger" onclick="deleteDriver('${p.id}')">删除</button></td></tr>`;
+    const assignedVehicles=vehicles.filter(v=>(v.currentDriver||'').trim()===p.name).map(v=>v.plate);
+    const vehicleInfo=assignedVehicles.length?assignedVehicles.join('、'):'<span style="color:#bbb;">无</span>';
+    return `<tr><td>${p.name||'-'}</td><td>${status}</td><td>${p.joinDate||'-'}</td><td>${p.leaveDate||'-'}</td><td>${vehicleInfo}</td><td>${deliveryCount(p.name)}</td><td>${qtyTotal(p.name)}</td><td>${p.remark||'-'}</td><td><button class="btn-small btn-outline" onclick="editDriver('${p.id}')">编辑</button> <button class="btn-small btn-danger" onclick="deleteDriver('${p.id}')">删除</button></td></tr>`;
   }).join('');
   container.innerHTML=`${head}
-  <div class="table-wrapper"><table class="data-table"><thead><tr><th>姓名</th><th>状态</th><th>上岗时间</th><th>离职时间</th><th>累计趟数</th><th>累计件数</th><th>备注</th><th>操作</th></tr></thead><tbody>
+  <div class="table-wrapper"><table class="data-table"><thead><tr><th>姓名</th><th>状态</th><th>上岗时间</th><th>离职时间</th><th>分配车辆</th><th>累计趟数</th><th>累计件数</th><th>备注</th><th>操作</th></tr></thead><tbody>
     ${rows}
   </tbody></table></div></div>`;
 }
