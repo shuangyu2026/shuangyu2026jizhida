@@ -1439,33 +1439,6 @@ let _syncState={status:'idle',lastSync:null,error:null}; // idle,syncing,success
     if(c.gistId){delete c.gistId;changed=true;}
     if(changed) localStorage.setItem(SYNC_KEY,JSON.stringify(c));
   }catch(e){}
-  // 一次性导入2队Excel司机数据（迁移标记：jzd_import_2dui_done）
-  try{
-    if(!localStorage.getItem('jzd_import_2dui_done')){
-      const importList=[
-        {name:'吉之祝兰灵',joinDate:'2026-05-02'},
-        {name:'吉之邵海良',joinDate:'2026-05-02'},
-        {name:'吉之邓新柠',joinDate:'2026-05-04'},
-        {name:'吉之黄世宝',joinDate:'2026-05-05'},
-        {name:'吉之韦志长',joinDate:'2026-05-10'},
-        {name:'吉之李树驹',joinDate:'2026-05-11'},
-        {name:'吉之罗辉辉',joinDate:'2026-05-14'},
-        {name:'吉之李建龙',joinDate:'2026-05-17'},
-        {name:'吉之梁兴雄',joinDate:'2026-05-28'},
-        {name:'吉之文齐宏',joinDate:'2026-05-30'}
-      ];
-      const existing=new Set(driverProfiles.map(p=>p.name));
-      let added=0;
-      importList.forEach(d=>{
-        if(!existing.has(d.name)){
-          driverProfiles.push({id:'dr_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),name:d.name,joinDate:d.joinDate,leaveDate:'',remark:'由2队Excel导入'});
-          added++;
-        }
-      });
-      if(added) saveToLocal();
-      localStorage.setItem('jzd_import_2dui_done','1');
-    }
-  }catch(e){console.warn('2dui import error',e);}
 })();
 
 function _getDeviceId(){
