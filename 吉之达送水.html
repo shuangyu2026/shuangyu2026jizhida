@@ -435,11 +435,17 @@ button:hover{opacity:0.9;}
   <div class="modal-content">
     <h3 id="deliveryModalTitle">➕ 新增配送单</h3>
     <input type="date" id="newDate">
+    <input type="text" id="newOrderNo" placeholder="单号（如PC00105312）">
+    <input type="text" id="newVehicleNo" placeholder="车号" list="vehicleNoList">
+    <datalist id="vehicleNoList"></datalist>
     <input type="text" id="newDriver" placeholder="司机姓名" list="driverList">
     <datalist id="driverList"></datalist>
     <input type="text" id="newArea" placeholder="地区" list="areaList">
     <datalist id="areaList"></datalist>
-    <input type="number" id="newQty" placeholder="件数" min="1">
+    <input type="number" id="newQty" placeholder="实际件数" min="1">
+    <input type="text" id="newSalesNo" placeholder="销售单号（如KD00625430）">
+    <input type="number" id="newAmount" placeholder="金额(元)" step="0.01" min="0">
+    <input type="text" id="newDeliveryRemark" placeholder="备注">
     <div class="modal-buttons">
       <button class="btn-outline" onclick="closeModal()">取消</button>
       <button onclick="saveDelivery()">保存</button>
@@ -687,7 +693,7 @@ function saveAndRefresh(){saveToLocal();refreshAll();}
 // ============================================================
 function getAreaPrice(area){return regionPrices[area]||1.08;}
 function calculateProfit(d){
-  const revenue=getAreaPrice(d.area)*d.qty;
+  const revenue=(d.amount&&d.amount>0)?d.amount:(getAreaPrice(d.area)*d.qty);
   const driverCost=driverUnitPrice*d.qty;
   const tax=revenue*TAX_RATE;
   return{revenue,driverCost,tax,profit:revenue-driverCost-tax};
@@ -718,10 +724,15 @@ function openEditDelivery(id){
   const delivery=deliveries.find(d=>d.id===id);if(!delivery) return;
   currentEditDeliveryId=id;
   document.getElementById('deliveryModalTitle').innerText='✏️ 编辑配送单';
-  document.getElementById('newDate').value=delivery.date;
-  document.getElementById('newDriver').value=delivery.driver;
-  document.getElementById('newArea').value=delivery.area;
-  document.getElementById('newQty').value=delivery.qty;
+  document.getElementById('newDate').value=delivery.date||'';
+  document.getElementById('newOrderNo').value=delivery.orderNo||'';
+  document.getElementById('newVehicleNo').value=delivery.vehicleNo||'';
+  document.getElementById('newDriver').value=delivery.driver||'';
+  document.getElementById('newArea').value=delivery.area||'';
+  document.getElementById('newQty').value=delivery.qty||'';
+  document.getElementById('newSalesNo').value=delivery.salesNo||'';
+  document.getElementById('newAmount').value=delivery.amount||'';
+  document.getElementById('newDeliveryRemark').value=delivery.remark||'';
   document.getElementById('addModal').style.display='flex';
 }
 function deleteDeliveryById(id){
@@ -732,37 +743,43 @@ function deleteDeliveryById(id){
 }
 function saveDelivery(){
   const date=document.getElementById('newDate').value;
+  const orderNo=document.getElementById('newOrderNo').value.trim();
+  const vehicleNo=document.getElementById('newVehicleNo').value.trim();
   const driver=document.getElementById('newDriver').value.trim();
   const area=document.getElementById('newArea').value.trim();
   const qty=parseInt(document.getElementById('newQty').value);
-  if(!date||!driver||!area||isNaN(qty)||qty<=0){showToast('请完整填写',true);return;}
+  const salesNo=document.getElementById('newSalesNo').value.trim();
+  const amount=parseFloat(document.getElementById('newAmount').value)||0;
+  const remark=document.getElementById('newDeliveryRemark').value.trim();
+  if(!date||!driver||!area||isNaN(qty)||qty<=0){showToast('日期/司机/地区/件数必填',true);return;}
   if(!regionPrices[area]){
     if(confirm(`地区 "${area}" 不在列表中，自动添加默认1.08元？`)) regionPrices[area]=1.08;
     else return;
   }
+  const record={date,orderNo,vehicleNo,driver,area,qty,salesNo,amount,remark};
   if(currentEditDeliveryId){
     const idx=deliveries.findIndex(d=>d.id===currentEditDeliveryId);
-    if(idx!==-1){deliveries[idx]={...deliveries[idx],date,driver,area,qty};showToast('已更新');fireHook('onDeliveryUpdated',deliveries[idx]);}
+    if(idx!==-1){deliveries[idx]={...deliveries[idx],...record};showToast('已更新');fireHook('onDeliveryUpdated',deliveries[idx]);}
   }else{
-    const nd={id:generateId(),date,driver,area,qty};
+    const nd={id:generateId(),...record};
     deliveries.push(nd);showToast('已添加');fireHook('onDeliveryAdded',nd);
   }
   saveAndRefresh();closeModal();currentEditDeliveryId=null;
   document.getElementById('deliveryModalTitle').innerText='➕ 新增配送单';
-  ['newDate','newDriver','newArea','newQty'].forEach(id=>document.getElementById(id).value='');
+  ['newDate','newOrderNo','newVehicleNo','newDriver','newArea','newQty','newSalesNo','newAmount','newDeliveryRemark'].forEach(id=>document.getElementById(id).value='');
 }
 
 // ============================================================
 // CSV 导入/导出
 // ============================================================
 window.exportDeliveriesCsv=function(filteredList){
-  const list=filteredList||deliveries;
-  const header=['日期','司机','地区','件数','运价(元)','司机成本(元)','利润(元)'];
-  const rows=list.map(d=>{const p=calculateProfit(d);return[d.date,d.driver,d.area,d.qty,p.revenue.toFixed(2),p.driverCost.toFixed(2),p.profit.toFixed(2)];});
-  const csv=[header,...rows].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
-  const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`配送记录_${new Date().toISOString().slice(0,10)}.csv`;a.click();
-  showToast(`已导出 ${list.length} 条记录`);
+const list=filteredList||deliveries;
+const header=['日期','单号','车号','司机','区域','实际件数','销售单号','金额','备注'];
+const rows=list.map(d=>[d.date,d.orderNo||'',d.vehicleNo||'',d.driver,d.area,d.qty,d.salesNo||'',d.amount||'',d.remark||'']);
+const csv=[header,...rows].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'});
+const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`配送记录_${new Date().toISOString().slice(0,10)}.csv`;a.click();
+showToast(`已导出 ${list.length} 条记录`);
 };
 window.exportRegionCsv=function(){
   const header=['地区','单价(元/件)'];
@@ -789,10 +806,22 @@ window.handleCsvImport=function(event){
         const line=lines[i].trim();if(!line) continue;
         const cols=parseCsvLine(line);
         if(cols.length<4){errors.push(`第${i+1}行列数不足`);continue;}
-        const date=cols[0].trim(),driver=cols[1].trim(),area=cols[2].trim(),qty=parseInt(cols[3].trim());
-        if(!date||!driver||!area||isNaN(qty)||qty<=0){errors.push(`第${i+1}行数据无效`);continue;}
-        if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){errors.push(`第${i+1}行日期格式错误：${date}`);continue;}
-        parsed.push({date,driver,area,qty});
+        // 新格式: 日期,单号,车号,司机,区域,件数,销售单号,金额,备注
+        // 兼容旧格式: 日期,司机,地区,件数
+        let rec;
+        if(cols.length>=6){
+          const date=cols[0].trim(),orderNo=cols[1].trim(),vehicleNo=cols[2].trim(),driver=cols[3].trim(),area=cols[4].trim(),qty=parseInt(cols[5].trim());
+          const salesNo=(cols[6]||'').trim(),amount=parseFloat(cols[7])||0,remark=(cols[8]||'').trim();
+          if(!date||!driver||!area||isNaN(qty)||qty<=0){errors.push(`第${i+1}行数据无效`);continue;}
+          if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){errors.push(`第${i+1}行日期格式错误：${date}`);continue;}
+          rec={date,orderNo,vehicleNo,driver,area,qty,salesNo,amount:amount||undefined,remark};
+        } else {
+          const date=cols[0].trim(),driver=cols[1].trim(),area=cols[2].trim(),qty=parseInt(cols[3].trim());
+          if(!date||!driver||!area||isNaN(qty)||qty<=0){errors.push(`第${i+1}行数据无效`);continue;}
+          if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){errors.push(`第${i+1}行日期格式错误：${date}`);continue;}
+          rec={date,driver,area,qty};
+        }
+        parsed.push(rec);
       }
       if(!parsed.length){showToast('未解析到有效数据',true);if(errors.length) alert('错误：\n'+errors.slice(0,10).join('\n'));return;}
       pendingCsvRows=parsed;showCsvPreview(parsed,errors);
@@ -814,14 +843,14 @@ function parseCsvLine(line){
 function showCsvPreview(rows,errors){
   const unknownAreas=[...new Set(rows.map(r=>r.area).filter(a=>!regionPrices[a]))];
   let dupCount=0;
-  let html=`<table class="data-table"><thead><tr><th>#</th><th>日期</th><th>司机</th><th>地区</th><th>件数</th><th>状态</th></tr></thead><tbody>`;
+  let html=`<table class="data-table"><thead><tr><th>#</th><th>日期</th><th>单号</th><th>车号</th><th>司机</th><th>区域</th><th>件数</th><th>金额</th><th>状态</th></tr></thead><tbody>`;
   rows.forEach((r,i)=>{
     const isDup=deliveries.some(d=>d.date===r.date&&d.driver===r.driver&&d.area===r.area&&d.qty===r.qty);
     if(isDup) dupCount++;
     const warn=!regionPrices[r.area]?'<span style="color:#e67e22;font-size:11px;"> ⚠️新</span>':'';
     const status=isDup?'<span style="color:#ef4444;font-size:11px;">重复</span>':'<span style="color:var(--success);font-size:11px;">新增</span>';
     const rowStyle=isDup?'style="opacity:0.5;text-decoration:line-through;"':'';
-    html+=`<tr ${rowStyle}><td>${i+1}</td><td>${r.date}</td><td>${r.driver}</td><td>${r.area}${warn}</td><td>${r.qty}</td><td>${status}</td></tr>`;
+    html+=`<tr ${rowStyle}><td>${i+1}</td><td>${r.date}</td><td>${r.orderNo||'-'}</td><td>${r.vehicleNo||'-'}</td><td>${r.driver}</td><td>${r.area}${warn}</td><td>${r.qty}</td><td>${r.amount||'-'}</td><td>${status}</td></tr>`;
   });
   html+='</tbody></table>';
   document.getElementById('csvPreviewContent').innerHTML=html;
@@ -841,7 +870,13 @@ window.confirmCsvImport=function(){
     const isDuplicate=deliveries.some(d=>d.date===r.date&&d.driver===r.driver&&d.area===r.area&&d.qty===r.qty);
     if(isDuplicate){skipped++;return;}
     if(!regionPrices[r.area]) regionPrices[r.area]=1.08;
-    deliveries.push({id:generateId(),date:r.date,driver:r.driver,area:r.area,qty:r.qty});
+    const newRec={id:generateId(),date:r.date,driver:r.driver,area:r.area,qty:r.qty};
+    if(r.orderNo) newRec.orderNo=r.orderNo;
+    if(r.vehicleNo) newRec.vehicleNo=r.vehicleNo;
+    if(r.salesNo) newRec.salesNo=r.salesNo;
+    if(r.amount) newRec.amount=r.amount;
+    if(r.remark) newRec.remark=r.remark;
+    deliveries.push(newRec);
     count++;
   });
   pendingCsvRows=[];saveAndRefresh();closeCsvImportModal();
@@ -1122,12 +1157,14 @@ function renderRegionPanel(){
 function renderRecordsPanel(){
   const container=document.getElementById('recordsPanel');
   const allDrivers=getAllDriverNames(),allAreas=getAllAreas();
+  const allVehicleNos=[...new Set(deliveries.map(d=>d.vehicleNo).filter(Boolean))].sort();
   const yearMonthSet=new Set();deliveries.forEach(d=>{if(d.date) yearMonthSet.add(d.date.substring(0,7));});
   const sortedMonths=Array.from(yearMonthSet).sort().reverse();
   const filterHtml=`<div class="filter-bar">
     <div class="filter-item"><label>📅 月度</label><select id="filterYearMonth"><option value="">全部</option>${sortedMonths.map(m=>`<option value="${m}">${m}</option>`).join('')}</select></div>
+    <div class="filter-item"><label>🚛 车号</label><select id="filterVehicleNo"><option value="">全部</option>${allVehicleNos.map(v=>`<option value="${v}">${v}</option>`).join('')}</select></div>
     <div class="filter-item"><label>👤 司机</label><select id="filterDriver"><option value="">全部</option>${allDrivers.map(d=>`<option value="${d}">${d}</option>`).join('')}</select></div>
-    <div class="filter-item"><label>📍 地区</label><select id="filterArea"><option value="">全部</option>${allAreas.map(a=>`<option value="${a}">${a}</option>`).join('')}</select></div>
+    <div class="filter-item"><label>📍 区域</label><select id="filterArea"><option value="">全部</option>${allAreas.map(a=>`<option value="${a}">${a}</option>`).join('')}</select></div>
     <div style="display:flex;gap:6px;align-items:flex-end;"><button class="btn-small" id="applyFilterBtn">筛选</button><button class="btn-small btn-outline" id="resetFilterBtn">重置</button></div>
   </div>`;
   const importExportBar=`<div class="import-export-bar">
@@ -1138,27 +1175,28 @@ function renderRecordsPanel(){
 <button class="btn-small btn-outline" onclick="exportDeliveriesCsv()">📤 导出全部 CSV</button>
 <button class="btn-small btn-outline" onclick="cleanDuplicateDeliveries()" style="color:var(--danger);border-color:var(--danger);">🧹 清理重复</button>
     </div>
-    <span style="color:#aaa;font-size:11px;">格式：日期,司机,地区,件数</span>
+    <span style="color:#aaa;font-size:11px;">格式：日期,单号,车号,司机,区域,件数,销售单号,金额,备注</span>
   </div>`;
   function getFiltered(){
-    const month=document.getElementById('filterYearMonth')?.value||'',driver=document.getElementById('filterDriver')?.value||'',area=document.getElementById('filterArea')?.value||'';
+    const month=document.getElementById('filterYearMonth')?.value||'',vno=document.getElementById('filterVehicleNo')?.value||'',driver=document.getElementById('filterDriver')?.value||'',area=document.getElementById('filterArea')?.value||'';
     let f=[...deliveries];
     if(month) f=f.filter(d=>d.date&&d.date.startsWith(month));
+    if(vno) f=f.filter(d=>d.vehicleNo===vno);
     if(driver) f=f.filter(d=>d.driver===driver);
     if(area) f=f.filter(d=>d.area===area);
     return f;
   }
   function renderTable(list){
     if(!list.length) return '<p style="text-align:center;color:#aaa;padding:20px;">暂无记录</p>';
-    return `<div class="table-wrapper"><table class="data-table"><thead><tr><th>日期</th><th>司机</th><th>地区</th><th>件数</th><th>运价</th><th>成本</th><th>利润</th><th>操作</th></tr></thead><tbody>
-      ${list.map(d=>{const p=calculateProfit(d);return `<tr><td>${d.date}</td><td>${d.driver}</td><td>${d.area}</td><td>${d.qty}</td><td>${p.revenue.toFixed(2)}</td><td>${p.driverCost.toFixed(2)}</td><td class="${p.profit>=0?'profit-positive':'profit-negative'}">${p.profit.toFixed(2)}</td><td><button class="btn-small" onclick="openEditDelivery('${d.id}')">编辑</button> <button class="btn-small btn-danger" onclick="deleteDeliveryById('${d.id}')">删除</button></td></tr>`;}).join('')}
+    return `<div class="table-wrapper"><table class="data-table"><thead><tr><th>日期</th><th>单号</th><th>车号</th><th>司机</th><th>区域</th><th>件数</th><th>销售单号</th><th>金额</th><th>备注</th><th>操作</th></tr></thead><tbody>
+      ${list.map(d=>{return `<tr><td>${d.date}</td><td>${d.orderNo||'-'}</td><td>${d.vehicleNo||'-'}</td><td>${d.driver}</td><td>${d.area}</td><td>${d.qty}</td><td>${d.salesNo||'-'}</td><td>${d.amount?d.amount.toFixed(2):'-'}</td><td>${d.remark||'-'}</td><td><button class="btn-small" onclick="openEditDelivery('${d.id}')">编辑</button> <button class="btn-small btn-danger" onclick="deleteDeliveryById('${d.id}')">删除</button></td></tr>`;}).join('')}
     </tbody></table></div>`;
   }
   function refresh(){
     const filtered=getFiltered();
     container.innerHTML=`<div class="card"><div class="section-title">📋 配送明细记录</div>${importExportBar}${filterHtml}${renderTable(filtered)}</div>`;
     document.getElementById('applyFilterBtn')?.addEventListener('click',refresh);
-    document.getElementById('resetFilterBtn')?.addEventListener('click',()=>{['filterYearMonth','filterDriver','filterArea'].forEach(id=>{const el=document.getElementById(id);if(el) el.value='';});refresh();});
+    document.getElementById('resetFilterBtn')?.addEventListener('click',()=>{['filterYearMonth','filterVehicleNo','filterDriver','filterArea'].forEach(id=>{const el=document.getElementById(id);if(el) el.value='';});refresh();});
     document.getElementById('exportCsvBtn')?.addEventListener('click',()=>exportDeliveriesCsv(getFiltered()));
   }
   container.innerHTML=`<div class="card"><div class="section-title">📋 配送明细记录</div>${importExportBar}${filterHtml}<div style="text-align:center;padding:20px;color:#aaa;">加载中...</div></div>`;
@@ -1264,7 +1302,8 @@ window.showMonthExpenses=function(month){
 // 全局刷新
 // ============================================================
 function updateSummary(){const g=getGlobalSummary();document.getElementById('totalQty').innerText=g.totalQty;document.getElementById('totalRevenue').innerText=g.totalRevenue.toFixed(0);document.getElementById('totalDriverCost').innerText=g.totalDriverCost.toFixed(0);document.getElementById('totalProfit').innerText=g.totalProfit.toFixed(0);}
-function refreshAll(){renderDriverPanel();renderRegionPanel();renderRecordsPanel();renderVehiclePanel();renderDriverMgrPanel();renderPenaltyPanel();renderFinancePanel();renderSyncPanel();updateSummary();updateDriverSelectInVehicleModal();updateDriverListForPenalty();}
+function updateVehicleNoList(){const datalist=document.getElementById('vehicleNoList');if(!datalist) return;const nos=[...new Set(vehicles.map(v=>v.plate).filter(Boolean))];datalist.innerHTML=nos.map(n=>`<option value="${n}"></option>`).join('');}
+function refreshAll(){renderDriverPanel();renderRegionPanel();renderRecordsPanel();renderVehiclePanel();renderDriverMgrPanel();renderPenaltyPanel();renderFinancePanel();renderSyncPanel();updateSummary();updateDriverSelectInVehicleModal();updateDriverListForPenalty();updateVehicleNoList();}
 function updateDriverSelectInVehicleModal(){const input=document.getElementById('vehicleCurrentDriver');const datalist=document.getElementById('vehicleDriverList');const drivers=getAllDriverNames();if(datalist){datalist.innerHTML=drivers.map(d=>`<option value="${d}"></option>`).join('');}if(input&&editingVehiclePlate){const vehicle=vehicles.find(v=>v.plate===editingVehiclePlate);input.value=(vehicle&&vehicle.currentDriver)?vehicle.currentDriver:'';}}
 function updateDriverListForPenalty(){const datalist=document.getElementById('driverListPenalty');if(datalist) datalist.innerHTML=getAllDriverNames().map(d=>`<option>${d}</option>`).join('');}
 
